@@ -1,0 +1,188 @@
+---
+title: "eCog_Ant_mound"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+Libraries
+
+```{r}
+
+library(ggplot2)
+library(tidyverse)
+
+```
+
+
+Insert data:
+Input is a combined csv from arc that shows individual disks per treatment and block
+
+```{r}
+
+disks <- read.csv("Results_all_years.csv")
+
+head(disks)
+
+disks <- disks %>% select(Class_name, Block, Plot, Fire, Rodents, Shape_Area, Year)
+
+```
+
+Create total area per treatment block
+
+```{r}
+
+area <- disks %>% 
+  group_by(Block, Plot, Year) %>%
+  summarise(Total_Shape_Area = sum(Shape_Area))
+
+complete_combinations <- disks %>%
+  distinct(Block, Plot, Year) %>%
+  expand(Block, Plot, Year)
+
+# Perform a full join with the original dataframe
+area <- complete_combinations %>%
+  left_join(area, by = c("Block", "Plot", "Year")) %>%
+  mutate(Total_Shape_Area = ifelse(is.na(Total_Shape_Area), 0, Total_Shape_Area))
+
+area <- area %>%
+  mutate(Burned = substr(Plot, 1, 1),
+         Rodents = substr(Plot, 2, 2))
+
+
+
+```
+
+
+Compare total area of ant mounds and disks combined between treatments and years
+
+```{r, warning=FALSE}
+
+hist(area$Total_Shape_Area)
+
+area %>% group_by(Year, Plot) %>%
+  summarise(ave = mean(Total_Shape_Area),
+            se = sd(Total_Shape_Area)/ sqrt(n())) |>
+  ggplot(aes(Year, ave, color = Plot, fill = Plot))+
+   geom_point()+
+    geom_ribbon(aes(ymin = ave - se, ymax = ave + se), alpha = 0.1, color = NA)+
+    geom_smooth(aes(group = Plot), alpha = 0.1) +
+  theme_classic()
+    
+area$Year <- as.factor(area$Year)
+                    
+ggplot(data =  area, aes(Year, Total_Shape_Area, fill = Plot))+
+  geom_boxplot()+
+  theme_classic()
+
+```
+
+Create density per treatment block
+
+```{r}
+
+density <- disks[disks$Class_name=="disk",]
+
+density <- density %>% group_by(Block, Plot, Year) %>%
+  summarise(mean_count = mean(n()))
+
+density <- complete_combinations %>% left_join(density, by = c("Block", "Plot", "Year")) %>%
+  mutate(mean_count = ifelse(is.na(mean_count), 0, mean_count))
+
+density <- density %>% group_by(Plot, Year) %>%
+  summarise(count = mean(mean_count),
+            se = sd(mean_count) / sqrt(n()))
+
+
+density <- density %>% mutate(Burned = substr(Plot, 1, 1),
+         Rodents = substr(Plot, 2, 2))
+
+
+
+```
+
+
+Plot density
+
+```{r, warning = FALSE}
+
+density %>% 
+  ggplot(aes(Year, count, color = Plot))+
+   geom_point()+
+    geom_smooth(aes(group = Plot), alpha = 0.1) +
+  geom_ribbon(aes(ymin = count - se, ymax = count + se, fill = Plot), alpha = 0.1, color = NA) + 
+  theme_classic()
+  
+
+density$Year <- as.factor(density$Year)
+
+ggplot(data = density, aes(Year, count, fill = Plot)) +
+  geom_boxplot()
+                 
+
+```
+
+Load manual counts for 2016 and 2021
+
+```{r}
+
+manual_dens_2016 <- read.csv("C:/Users/ryanp/Documents/Dissertation/Chapter1_Ants/Josh data/Ant mound density.csv")
+manual_dens_2021 <- read.csv("Density_manual_2021.csv")
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "BS","BR"))
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "US","UR"))
+
+```
+
+Compare manual 2021 to drone 2021
+
+```{r}
+
+drone_2021 <- density[density$Year== 2021,]
+
+comp_21 <- merge(drone_2021,manual_dens_2021, by = c("Plot", "Block"), all.x = TRUE)
+
+colnames(comp_21) <- c("Plot", "Block", "Year", "Drone", "Burned.x", "Rodents.x", "Burned.y", "Rodents.y", "Manual", "Area") 
+
+comp_21$Manual<- as.numeric(comp_21$Manual)
+
+t.test(comp_21$Drone, comp_21$Manual)
+
+comp_21 <- comp_21 |> pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Count")
+
+ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() + 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) 
+
+```
+
+Compare 2016 manual to drones
+
+```{r}
+
+drone_16 <-  density[density$Year == 2016,]
+
+comp_16 <- merge(drone_16,manual_dens_2016, by = c("Plot", "Block"), all.x = TRUE)
+
+comp_16 <- comp_16 %>% select(Plot, Block, Year, count, density)
+
+colnames(comp_16) <- c("Plot", "Block", "Year", "Drone", "Manual")
+
+t.test(comp_16$Drone, comp_16$Manual, paired = TRUE)
+
+comp_16<- comp_16 |> pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Count")
+
+ggplot(data = comp_16, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 8)) 
+
+```
+
+
