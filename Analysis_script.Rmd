@@ -11,7 +11,7 @@ Libraries
 
 library(ggplot2)
 library(tidyverse)
-
+library(stringr)
 
 ```
 
@@ -238,9 +238,13 @@ ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
         legend.text=element_text("serif", size=12), #change font size of legend text
         legend.title=element_text("serif", size=12))+
   scale_fill_manual(values = c("grey28", "lightgrey"))+
-  scale_x_discrete(labels = c("Burned:Excluded", "Burned:Present", "Unburned:Excluded", " Unburned:Present"))
+  scale_x_discrete(labels = c(paste("Burned", "Excluded", sep = "\n"),
+                              paste("Burned", "Present", sep = "\n"), 
+                              paste("Unburned", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Present", sep = "\n")))
 
-aov21 <- aov(comp_21$Count~ comp_21$Method+ comp_21$Plot + comp_21$Method*comp_21$Plot)
+shapiro.test(sqrt(comp_21$Count)) #### square root to normalize the data
+aov21 <- aov(sqrt(comp_21$Count)~ comp_21$Method+ comp_21$Plot + comp_21$Method*comp_21$Plot)
 summary(aov21)
 
 
@@ -277,9 +281,12 @@ ggplot(data = comp_21_large, aes(Plot, Count, fill = Method))+
     scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +
   theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
   scale_fill_manual(values = c("grey28", "lightgrey"))+
-  scale_x_discrete(labels = c("Burned:Excluded", "Burned:Present", "Unburned:Excluded", " Unburned:Present"))
+  scale_x_discrete(labels = c(paste("Burned", "Excluded", sep = "\n"),
+                              paste("Burned", "Present", sep = "\n"), 
+                              paste("Unburned", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Present", sep = "\n")))
 
-aov21_large <-aov(comp_21_large$Count~ comp_21_large$Method+ comp_21_large$Plot + 
+aov21_large <-aov(sqrt(comp_21_large$Count)~ comp_21_large$Method+ comp_21_large$Plot + 
                     comp_21_large$Method*comp_21_large$Plot)
 summary(aov21_large)
 
@@ -343,7 +350,10 @@ drone_man21_comp |>
     scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
   theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
   scale_fill_manual(values = c("grey28", "lightgrey"))+
-  scale_x_discrete(labels = c("Burned:Excluded", "Burned:Present", "Unburned:Excluded", " Unburned:Present"))
+  scale_x_discrete(labels = c(paste("Burned", "Excluded", sep = "\n"),
+                              paste("Burned", "Present", sep = "\n"), 
+                              paste("Unburned", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Present", sep = "\n")))
 
 ano.df2 <- drone_man21_comp |> 
   pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area")
@@ -409,7 +419,10 @@ drone_man21_comp |>
     scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
   theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
   scale_fill_manual(values = c("grey28", "lightgrey"))+
-  scale_x_discrete(labels = c("Burned:Excluded", "Burned:Present", "Unburned:Excluded", " Unburned:Present"))
+  scale_x_discrete(labels = c(paste("Burned", "Excluded", sep = "\n"),
+                              paste("Burned", "Present", sep = "\n"), 
+                              paste("Unburned", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Present", sep = "\n")))
 
 drone_man21_comp |> 
   pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |>
@@ -429,15 +442,25 @@ GLMM for density
 
 ```{r}
 
-library(rstatix)
-density
 
-dens.mod <- glm(data = density, mean_count ~ Burned + Rodents + Year + Block, family = "poisson")
+dens.mod <- glm(data = density, mean_count ~ Burned + Rodents + Year + (1|Block), family = "poisson")
 
 summary(dens.mod)
-density$obs <- 1:length(density$mean_count)
+
 
 ```
 
+GLMM for area
+
+```{r}
+
+
+shapiro.test(area$Total_Shape_Area) ## Normal distribution
+area$Year <- as.numeric(area$Year)
+area.mod <- glm(data = area, Total_Shape_Area ~ Burned + Rodents + Year + (1|Block), family = "gaussian" )
+
+summary(area.mod)
+
+```
 
 
