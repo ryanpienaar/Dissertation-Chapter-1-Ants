@@ -243,6 +243,24 @@ ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
                               paste("Unburned", "Excluded", sep = "\n"), 
                               paste("Unburned", "Present", sep = "\n")))
 
+#Exclude x axis labels for paper
+ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() + 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +  xlab( "Treatment") +
+  ylab("Number of Mounds Detected")+
+  xlab(element_blank())+
+  theme(legend.position = c(0.8,0.75),
+        text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12),
+        axis.text.x = element_blank())+
+  scale_fill_manual(values = c("grey28", "lightgrey"))
+
 shapiro.test(sqrt(comp_21$Count)) #### square root to normalize the data
 aov21 <- aov(sqrt(comp_21$Count)~ comp_21$Method+ comp_21$Plot + comp_21$Method*comp_21$Plot)
 summary(aov21)
@@ -354,6 +372,26 @@ drone_man21_comp |>
                               paste("Burned", "Present", sep = "\n"), 
                               paste("Unburned", "Excluded", sep = "\n"), 
                               paste("Unburned", "Present", sep = "\n")))
+
+#### Remove x axis for paper
+drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |> 
+  ggplot(aes(Plot, Area, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic()+
+    theme(title = element_text("serif"), text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12),
+        axis.text.x = element_blank())+
+  xlab(element_blank()) +
+  ylab(expression(paste("Average Total Disk Area per Plot   ", (m^2))))+ 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
+  theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))
 
 ano.df2 <- drone_man21_comp |> 
   pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area")
