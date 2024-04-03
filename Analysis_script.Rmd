@@ -72,13 +72,13 @@ hist(area$Total_Shape_Area)
 area %>% group_by(Year, Plot) %>%
   summarise(ave = mean(Total_Shape_Area),
             se = sd(Total_Shape_Area)/ sqrt(n()))  |>
-  ggplot(aes(Year, ave, color = Plot, fill = Plot))+
-   geom_point()+
+  ggplot(aes(Year, ave, color = Plot, fill = Plot, shape = Plot))+
+   geom_point(size =3)+
     geom_ribbon(aes(ymin = ave - se, ymax = ave + se), alpha = 0.1, color = NA)+
     geom_smooth(aes(group = Plot), alpha = 0.1) +
   theme_classic() +
   labs(x = "Year",
-       y = expression(paste("Average Total Disk Area per Plot  ", (m^2))))+
+       y = expression(paste("Average Total Disk Area per Plot   ", (m^2))))+
   theme(text = element_text(size=12, family = "serif"))
     
 area$Year <- as.factor(area$Year)
@@ -124,12 +124,13 @@ summary(densityaov)
 density %>% group_by(Year, Plot) %>%
   summarise(ave = mean(mean_count),
             se = sd(mean_count)/ sqrt(n()))  |>
-  ggplot(aes(Year, ave, color = Plot, fill = Plot))+
-   geom_point()+
+  ggplot(aes(Year, ave, color = Plot, fill = Plot, shape = Plot))+
+   geom_point(size = 3)+
+  scale_y_continuous(labels = function(x) paste0(x, " "))+
     geom_ribbon(aes(ymin = ave - se, ymax = ave + se), alpha = 0.1, color = NA)+
     geom_smooth(aes(group = Plot), alpha = 0.1) +
   theme_classic() +
-  labs(x = "Year",
+  labs(x = element_blank(),
        y = "Average Number of Disks per Plot")+
   theme(text = element_text(size=12, family = "serif"))
 
