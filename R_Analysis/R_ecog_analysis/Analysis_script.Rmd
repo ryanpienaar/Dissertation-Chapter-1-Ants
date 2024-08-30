@@ -1,0 +1,584 @@
+---
+title: "eCog_Ant_mound"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, fig.width = 7.5, fig.height = 5)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+
+
+Libraries
+
+```{r}
+
+library(ggplot2)
+library(tidyverse)
+library(stringr)
+library(lme4)
+library(lmerTest)
+library(glmmTMB)
+
+```
+
+
+Insert data:
+Input is a combined csv from arc that shows individual disks per treatment and block
+
+```{r}
+
+d16 <- read.csv("Arc_Outputs/disks_2016.csv")
+d21 <- read.csv("Arc_Outputs/disks_2021.csv")
+d23 <- read.csv("Arc_Outputs/disks_2023.csv")
+d16$Year <- 2016
+d21$Year <- 2021
+
+
+d16 <- d16 %>% select(Block, Plot, Shape_Area, Year)
+d21 <- d21 %>% select(Block, Plot, Shape_Area, Year)
+d23 <- d23 %>% select(Block, Plot, Shape_Area, Year)
+disks <- rbind(d16, d21, d23)
+
+```
+
+Create total area per treatment block
+
+```{r}
+
+area <- disks %>% 
+  group_by(Block, Plot, Year) %>%
+  summarise(Total_Shape_Area = sum(Shape_Area))
+
+complete_combinations <- disks %>%
+  distinct(Block, Plot, Year) %>%
+  tidyr::expand(Block, Plot, Year)
+
+# Perform a full join with the original dataframe
+area <- complete_combinations %>%
+  left_join(area, by = c("Block", "Plot", "Year")) %>%
+  mutate(Total_Shape_Area = ifelse(is.na(Total_Shape_Area), 0, Total_Shape_Area))
+
+area <- area %>%
+  mutate(Burned = substr(Plot, 1, 1),
+         Rodents = substr(Plot, 2, 2))
+
+head(area)
+
+```
+
+
+
+
+Compare total area of ant mounds and disks combined between treatments and years
+
+```{r, warning=FALSE}
+
+hist(area$Total_Shape_Area)
+
+fig4b <- area %>% group_by(Year, Plot) %>%
+  summarise(ave = mean(Total_Shape_Area),
+            se = sd(Total_Shape_Area)/ sqrt(n()))  |>
+  ggplot(aes(Year, ave, color = Plot, fill = Plot, shape = Plot))+
+   geom_point(size =3)+
+    geom_ribbon(aes(ymin = ave - se, ymax = ave + se), alpha = 0.1, color = NA)+
+    geom_smooth(aes(group = Plot), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "Year",
+       y = expression(paste("Average Total Disk Area per Plot   ", (m^2))))+
+  theme(text = element_text(size=12, family = "serif"))
+    
+area$Year <- as.factor(area$Year)
+                    
+ggplot(data =  area, aes(Year, Total_Shape_Area, fill = Plot))+
+  geom_boxplot()+
+  theme_classic()
+
+areadiff <- area |> pivot_wider(names_from = Year, values_from = Total_Shape_Area)
+areadiff$tot.change <- areadiff$`2023` - areadiff$`2016`
+
+areaaov <- aov(data = areadiff, tot.change ~ Burned + Rodents + Burned * Rodents)
+areaaov2 <- aov(data = areadiff, tot.change ~ Plot)
+summary(areaaov2)
+
+area %>% group_by(Year, Plot) %>%
+  summarise(ave = mean(Total_Shape_Area),
+            se = sd(Total_Shape_Area)/ sqrt(n()))  
+
+```
+
+Create density per treatment block
+
+```{r}
+
+density <- disks
+
+density <- density %>% group_by(Block, Plot, Year) %>%
+  summarise(mean_count = mean(n()))
+
+density <- complete_combinations %>% left_join(density, by = c("Block", "Plot", "Year")) %>%
+  mutate(mean_count = ifelse(is.na(mean_count), 0, mean_count))
+
+head(density)
+hist(density$mean_count)
+
+```
+
+
+
+```{r, warning=FALSE}
+
+density[c("Burned", "Rodents")] <- str_split_fixed(density$Plot, "", 2)
+
+densityaov <- aov(data = density, mean_count ~ Burned + Rodents)
+summary(densityaov)
+TukeyHSD(densityaov)
+
+fig4a <- density %>% group_by(Year, Plot) %>%
+  summarise(ave = mean(mean_count),
+            se = sd(mean_count)/ sqrt(n()))  |>
+  ggplot(aes(Year, ave, color = Plot, fill = Plot, shape = Plot))+
+   geom_point(size = 3)+
+  scale_y_continuous(labels = function(x) paste0(x, " "))+
+    geom_ribbon(aes(ymin = ave - se, ymax = ave + se), alpha = 0.1, color = NA)+
+    geom_smooth(aes(group = Plot), alpha = 0.1) +
+  theme_classic() +
+  labs(x = element_blank(),
+       y = "Average Number of Disks per Plot")+
+  theme(text = element_text(size=12, family = "serif"))
+
+
+
+#### Repeated Measures ANOVA
+
+rma <- aov(data = density, mean_count~ Burned*Year+ Rodents*Year+ Burned*Rodents*Year + Error(Block/Year))
+summary(rma)
+
+
+```
+
+
+
+
+Load manual counts for 2021
+
+```{r}
+
+manual_dens_2021 <- read.csv("Density_manual_2021.csv")
+raw <- read.csv("C:/Users/ryanp/Documents/Dissertation/Chapter1_Ants/Ant_analysis_manua;/Ant Manuals.csv")
+hist(raw$Disk.Diameter..cm.)
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "BS","BR"))
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "US","UR"))
+
+manual_dens_2021 <- manual_dens_2021 |> select(Block, Plot, Count, Area)
+
+head(manual_dens_2021)
+
+
+manual_dens_2021 <- raw
+
+manual_dens_2021 <- manual_dens_2021 |> group_by(Block, Plot) %>%
+  summarise(mean_count = mean(n()))
+
+manual_dens_2021 <- manual_dens_2021[-1,] #remove controls
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "BS","BR"))
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "US","UR"))
+
+
+#### Manual large is to do the same as before but to only compare disks above a certain size threshold
+# so same analysis repeated
+manual_large <- raw[raw$Disk.Diameter..cm.>= 250,] ### I think there might be a size threshold for detecting mounds
+
+manual_large <- manual_large |> group_by(Block, Plot) %>%
+  summarise(mean_count = mean(n()))
+
+manual_large <- manual_large[-1,] # remove controls
+
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "BS","BR"))
+
+manual_dens_2021 <- manual_dens_2021 %>%
+  mutate_all(~replace(., . == "US","UR"))
+
+
+head(manual_dens_2021)
+
+```
+
+Compare manual 2021 to drone 2021
+
+```{r}
+
+drone_2021 <- disks[disks$Year== 2021,]
+drone_2021 <- drone_2021 %>% group_by(Block, Plot) %>%
+  summarise(mean_count = mean(n()),
+            Total_Shape_Area = sum(Shape_Area))
+drone_2021 <- complete_combinations[complete_combinations$Year==2021,] %>% 
+  left_join(drone_2021, by = c("Block", "Plot")) %>%
+  mutate(mean_count = ifelse(is.na(mean_count), 0, mean_count))
+
+drone_2021 <- drone_2021 %>% replace(is.na(.), 0)
+
+drone_2021 <- drone_2021 |> select(Block, Plot, mean_count)
+#colnames(drone_2021) <- colnames(manual_dens_2021)
+
+
+comp_21 <- merge(drone_2021,manual_dens_2021, by = c("Plot", "Block"), all.x = TRUE)
+colnames(comp_21)
+
+
+
+colnames(comp_21) <- c("Plot", "Block", "Drone", "Manual") 
+comp_21$Manual <- as.numeric(comp_21$Manual)
+
+summary(comp_21)
+
+comp_21 <- comp_21 |> pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Count")
+
+cheat <- ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() + 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +  xlab( "Treatment") +
+  ylab("Number of Mounds Detected")+
+  theme(legend.position = c(0.8,0.75),
+        text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))+
+  scale_x_discrete(labels = c(paste("Burned", "Rodents", "Excluded", sep = "\n"),
+                              paste("Burned", "Rodents", "Present", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Present", sep = "\n")))
+
+cheat
+
+#Exclude x axis labels for paper
+fig2a <- ggplot(data = comp_21, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() + 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +  xlab( "Treatment") +
+  ylab("Number of Mounds Detected")+
+  xlab(element_blank())+
+  theme(legend.position = c(0.8,0.75),
+        text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12),
+        axis.text.x = element_blank())+
+  scale_fill_manual(values = c("grey28", "lightgrey"))
+
+fig2a
+
+shapiro.test(sqrt(comp_21$Count)) #### square root to normalize the data
+aov21 <- aov(sqrt(comp_21$Count)~ comp_21$Method+ comp_21$Plot + comp_21$Method*comp_21$Plot)
+summary(aov21)
+
+
+
+```
+Do the same as above but only for mounds measuring greater than 2m in diameter
+
+```{r}
+
+manual_large[manual_large=="BS"] <- "BR"
+manual_large[manual_large=="US"] <- "UR"
+comp_21_large <- merge(drone_2021, manual_large, by = c("Plot", "Block"), all.x = TRUE)
+colnames(comp_21_large)
+
+
+colnames(comp_21_large) <- c("Plot", "Block", "Drone", "Manual") 
+
+
+comp_21_large <- comp_21_large |> pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Count")
+
+fig2b <- ggplot(data = comp_21_large, aes(Plot, Count, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic() + 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +
+    theme(title = element_text("serif"), text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12))+
+  xlab( "Treatment") +
+  ylab("Number of Mounds Detected")+ 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 11)) +
+  theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))+
+  scale_x_discrete(labels = c(paste("Burned", "Rodents", "Excluded", sep = "\n"),
+                              paste("Burned", "Rodents", "Present", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Present", sep = "\n")))
+
+fig2b
+
+aov21_large <-aov(sqrt(comp_21_large$Count)~ comp_21_large$Method+ comp_21_large$Plot + 
+                    comp_21_large$Method*comp_21_large$Plot)
+summary(aov21_large)
+
+```
+
+
+Compare my manual area to my drone area with all disks
+
+```{r}
+
+
+#### Organize manual areas #####
+man_area_21 <- read.csv("Manual_area_2021.csv")
+man_area_21 <- man_area_21[man_area_21$Plot != "C",] # Remove controls
+man_area_21 <- man_area_21  %>% group_by(Block, Plot) %>%
+  summarise(total.area = sum(Disk.Area),
+            se = sd(Disk.Area)/ sqrt(n())) # Summarize to create total disk area per plot
+
+man_area_21 <- man_area_21  %>% replace(is.na(.), 0) #remove NAs
+man_area_21 <- man_area_21 %>%
+  mutate_all(~replace(., . == "BS","BR")) # I used different naming conventions so I'm switching S to R
+man_area_21 <- man_area_21 %>%
+  mutate_all(~replace(., . == "US","UR"))
+man_area_21
+
+#### Organize 2021 drone areas ####
+drone_2021 <- disks[disks$Year== 2021,]
+drone_2021 <- drone_2021 %>% group_by(Block, Plot) %>%
+  summarise(total.area = sum(Shape_Area),
+            se = sd(Shape_Area)/ sqrt(n()))
+drone_2021 <- complete_combinations[complete_combinations$Year==2021,] %>% 
+  left_join(drone_2021, by = c("Block", "Plot")) 
+
+drone_2021 <- drone_2021 %>% replace(is.na(.), 0)
+
+
+#### Merge together #####
+
+drone_man21_comp <- merge(drone_2021, man_area_21, by = c("Block", "Plot"), all.x = TRUE)
+drone_man21_comp <- drone_man21_comp |> select(Block, Plot, total.area.x, total.area.y)
+
+colnames(drone_man21_comp) <- c("Block", "Plot","Drone", "Manual")
+drone_man21_comp$Manual <- as.numeric(drone_man21_comp$Manual)
+drone_man21_comp
+
+#### Plot comparison between manual and drone ####
+drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |> 
+  ggplot(aes(Plot, Area, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic()+
+    theme(title = element_text("serif"), text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12))+
+  xlab( "Treatment") +
+  ylab(expression(paste("Average Total Disk Area per Plot   ", (m^2))))+ 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
+  theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))+
+  scale_x_discrete(labels = c(paste("Burned", "Rodents", "Excluded", sep = "\n"),
+                              paste("Burned", "Rodents", "Present", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Present", sep = "\n")))
+
+#### Remove x axis for paper
+
+fig3a <- drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |> 
+  ggplot(aes(Plot, Area, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic()+
+    theme(title = element_text("serif"), text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12),
+        axis.text.x = element_blank())+
+  xlab(element_blank()) +
+  ylab(expression(paste("Average Total Disk Area per Plot   ", (m^2))))+ 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
+  theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))
+
+ano.df2 <- drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area")
+
+aov21_b <- aov(data = ano.df2, Area ~ Plot + Method + Plot*Method)
+summary(aov21_b)
+
+drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |>
+  group_by(Plot, Method) |>
+  summarise(mean_area = mean(Area))
+
+```
+
+Compare my manual area to my drone area with the 250cm diameter cutoff
+
+
+```{r}
+
+
+#### Organize manual areas #####
+man_area_21 <- read.csv("Manual_area_2021.csv")
+man_area_21 <- man_area_21[man_area_21$Plot != "C",] # Remove controls
+man_area_21 <- man_area_21[man_area_21$Disk.Diameter..cm.>=250,]
+man_area_21 <- man_area_21  %>% group_by(Block, Plot) %>%
+  summarise(total.area = sum(Disk.Area),
+            se = sd(Disk.Area)/ sqrt(n())) # Summarize to create total disk area per plot
+
+man_area_21 <- man_area_21  %>% replace(is.na(.), 0) #remove NAs
+man_area_21 <- man_area_21 %>%
+  mutate_all(~replace(., . == "BS","BR")) # I used different naming conventions so I'm switching S to R
+man_area_21 <- man_area_21 %>%
+  mutate_all(~replace(., . == "US","UR"))
+man_area_21
+
+#### Organize 2021 drone areas ####
+drone_2021
+
+#### Merge together #####
+
+drone_man21_comp <- merge( drone_2021, man_area_21, by = c("Block", "Plot"), all.x = TRUE)
+drone_man21_comp <- drone_man21_comp |> select(Block, Plot, total.area.x, total.area.y)
+colnames(drone_man21_comp) <- c("Block", "Plot", "Drone", "Manual")
+drone_man21_comp$Manual <- as.numeric(drone_man21_comp$Manual)
+drone_man21_comp
+
+#### Plot comparison between manual and drone with 250cm cut off####
+fig3b <- drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |>
+  ggplot(aes(Plot, Area, fill = Method))+
+   stat_summary(geom = "bar", fun = mean, position = "dodge", color = "black", width = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2, position = position_dodge(0.5))+
+  theme_classic()+
+    theme(title = element_text("serif"),
+          text=element_text("serif", size=12), #change font size of all text
+        axis.text=element_text("serif", size=12, colour = "black"), #change font size of axis text
+        axis.title=element_text("serif", size=12), #change font size of axis titles
+        plot.title=element_text("serif", size=12), #change font size of plot title
+        legend.text=element_text("serif", size=12), #change font size of legend text
+        legend.title=element_text("serif", size=12))+
+  xlab( "Treatment") +
+  ylab(expression(paste("Average Total Disk Area per Plot   ", (m^2))))+ 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 100))+
+  theme(legend.position = c(0.8,0.75), text = element_text(size=12, family = "serif"))+
+  scale_fill_manual(values = c("grey28", "lightgrey"))+
+  scale_x_discrete(labels = c(paste("Burned", "Rodents", "Excluded", sep = "\n"),
+                              paste("Burned", "Rodents", "Present", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Excluded", sep = "\n"), 
+                              paste("Unburned", "Rodents", "Present", sep = "\n")))
+
+drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") |>
+  group_by(Plot, Method) |>
+  summarise(mean_area = mean(Area))
+
+ano.df1 <- drone_man21_comp |> 
+  pivot_longer(cols = c("Drone", "Manual"), names_to = "Method", values_to = "Area") 
+  
+aov21_a <- aov(data = ano.df1, Area ~ Method + Plot + Method*Plot)
+summary(aov21_a)
+
+```
+
+
+GLMM for density
+
+```{r}
+
+typeof(density$Year)
+dens.mod <- lmer(data = density, mean_count ~ Burned * Rodents + Year + (1|Block))
+int.mod <- lmer(data = density, mean_count ~ Burned * Rodents * Year +(1|Block))
+summary(int.mod)
+summary(dens.mod)
+
+dens.diff <- density |> pivot_wider(names_from = "Year", values_from = "mean_count")
+dens.diff$change <- dens.diff$'2023' - dens.diff$'2016'
+
+```
+
+GLMM for area
+
+```{r}
+
+
+shapiro.test(area$Total_Shape_Area) ## Normal distribution
+area$Year <- as.numeric(area$Year)
+
+area.mod <- lmer(data = area, Total_Shape_Area ~ Burned * Rodents + Year + (1|Block))
+
+summary(area.mod)
+
+```
+
+
+Comparison of change 
+```{r}
+
+
+head(dens.diff)
+summary(dens.diff)
+ggplot(data= dens.diff, aes(Plot,change))+
+  geom_point()
+
+dens.c.ano <- aov(data = dens.diff, change ~ Plot + (1|Block))
+summary(dens.c.ano)
+
+
+area.diff <- area |> pivot_wider(names_from = "Year", values_from = "Total_Shape_Area")
+area.diff$change <- area.diff$'3' - area.diff$'1'
+
+area.c.ano <- aov(data = area.diff, change~ Plot)
+summary(area.c.ano)
+
+```
+
+combined figures for paper
+
+```{r, fig.height = 7.5, fig.width = 5}
+
+library(ggpubr)
+library(grid)
+
+ggarrange(fig2a+theme(legend.position = "none"), fig2b, ncol = 1,heights = c(1,1.2),labels = c("A", "B"),
+          font.label = list(size =12, family = "serif"))
+
+ggarrange(fig3a+theme(legend.position = "none"), fig3b, ncol = 1,heights = c(1,1.2),labels = c("A", "B"),
+          font.label = list(size =12, family = "serif"))
+
+ggarrange(fig4a+theme(legend.position = "none"), fig4b, ncol = 1,heights = c(1,1.2),
+          common.legend = TRUE, legend = "right", labels = c("A", "B"),
+          font.label = list(size =12, family = "serif"))
+
+
+
+```
+
+
+
